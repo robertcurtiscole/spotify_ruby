@@ -1,0 +1,49 @@
+
+# Copyright (c) 2010 Spotify Ltd
+
+TARGET = jukebox
+all:	$(TARGET)
+
+ifdef USE_AUDIOQUEUE
+AUDIO_DRIVER ?= osx
+LDFLAGS += -framework AudioToolbox
+else
+AUDIO_DRIVER ?= openal
+LDFLAGS += -framework OpenAL
+endif
+LDFLAGS += -framework libspotify
+
+CPUARCH   ?= $(shell uname -m)
+CFLAGS    += -D__APPLE__ -arch $(CPUARCH)
+LDFLAGS   += -arch $(CPUARCH)
+
+ifdef DEBUG
+CFLAGS += -g3 -O0
+endif
+
+CFLAGS += -Wall
+
+OBJS = $(TARGET).o appkey.o $(AUDIO_DRIVER)-audio.o audio.o
+
+$(TARGET): $(OBJS)
+	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@ $(LDLIBS)
+
+# cc jukebox.o appkey.o audio.o openal-audio.o -o jukebox -framework libspotify -framework OpenAL
+# cc jukebox.o appkey.o audio.o osx-audio.o -o jukebox -framework libspotify -framework AudioToolBox
+
+
+audio.o: audio.c audio.h
+jukebox.o: jukebox.c audio.h
+appkey.o: appkey.c
+playtrack.o: playtrack.c audio.h
+alsa-audio.o: alsa-audio.c audio.h
+dummy-audio.o: dummy-audio.c audio.h
+osx-audio.o: osx-audio.c audio.h
+openal-audio.o: openal-audio.c audio.h
+
+.PHONY: all check-libspotify clean
+
+vpath %.c ../
+
+clean:
+	rm -f *.o *~ $(TARGET)

@@ -1,0 +1,55 @@
+Spotify player notes
+libspotify api:
+https://developer.spotify.com/docs/libspotify/12.1.51/index.html
+
+========
+add to interface: login, logout,  (session status?)
+common code for alsa audio control?  volume?
+add playlists, list playlists and select-playlist(=load)
+common: _init must be a singleton - knowing if the thread exists.
+
+
+Everything is asynchronous.
+1. start the app
+2. initialize state (empty, list known users?)
+3. receive request to login a user (new or known)
+	a. create a session (wait)
+	b. get playlists (wait)
+	c. select a default playlist? (wait) 
+	d. check desired state: if playing, then start.  loop, shuffle, etc
+4. receive requests for state (provide as it is available)
+5. receive request to select playlist
+	a. select playlist (wait) 
+	b. check desired state: if playing, then start.  loop, shuffle, etc
+6. receive requests for play, volume, loop, etc - do them to the extent possible (set desired state)
+
+---------- obsolete - reading 1.0 docs -------------
+models.player.addEventListener('change', function() { … });
+models.player.playTrack(models.Track.fromURI('spotify:track:3P6p25MvU3qnvWa8L7i5Lr'));
+
+or context and contextGroup to play more interesting collection
+models.player.playContext(models.Album.fromURI('spotify:album:11SNDUZQ5iVPKJtl7x0677'));
+
+
+to get data about a track, you must load the property of interest and wait for it to complete loading:
+models.Track.fromURI('…').load('name', 'duration').done(function(track) {
+  console.log('The track ' + track.name + ' is ' + track.duration + ' ms long.');
+});
+
+
+Playlists look like collections to me
+playlist1.tracks.add(models.Track.fromURI('spotify:track:2P2S1wxZYQYHRYDip79JiY'));
+playlist2.tracks.add(track1, track2, …, trackN).done(addedManyTracks);
+
+
+We can get an image: 300 is smallest side size in pixels
+album.load('image').done(function() {
+  div.style.backgroundImage = 'url(' + album.imageForSize(300) + ')';
+});
+
+Perhaps start with toplist for the current user
+var list = toplists.Toplist.forCurrentUser();
+list.tracks.snapshot().done(function(tracks) {
+  for (var i = 0; i < tracks.length; i++)
+    doSomethingWithTopTrack(tracks.get(i));
+});

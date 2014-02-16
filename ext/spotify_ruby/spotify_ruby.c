@@ -16,25 +16,22 @@
 #include "pthread.h"
 
 #include <libspotify/api.h>
-
-// TODO: this goes in a common file, somewhere
-#define MODE_STOPPED 0
-#define MODE_PLAYING 1
-#define MODE_PAUSED 2
+#include "spotify_jukebox.h"
 
 
 static char cwd[1024];
-static int playerMode = MODE_STOPPED;
+static char newurl[256];
 
 static VALUE rubyClassSpotify;
 
 typedef struct player_globals {
-  //mpg123_handle   *mh;
+  /// The global session handle
+  sp_session    **pg_sess;
   int             *mode;  //stopped, playing, paused
   pthread_t       playerThread;
   pthread_mutex_t *pnew_cmd_ready;
   char            *title;
-  double          saved_volume;
+  double          saved_volume;     // 0.0 to 1.0
   char            muted;
 } sSpotGlobals;
 
@@ -61,17 +58,14 @@ void *PlayerThread(void *gPtr)
   }
 
   pSpotGlobals->muted = 0;
-  pSpotGlobals->mode = &playerMode;
+  pSpotGlobals->mode = &player_mode;
 
-  // wait for an event from the parent when we have a handle (or create one here)
-  printf("PT: PlayerThread started");
- 
-
+  printf("PlayerThread Spotify started\n");
+  result = spotify_infinite_loop(); 
   printf("PlayerThread finished\n");
 
   /* the function must return something - NULL will do */
-  return NULL;
-
+  return (void*) result;
 }
 
 static void spotRuby_free( void *p)
@@ -91,6 +85,8 @@ VALUE spotRuby_alloc(VALUE klass) {
   sSpotGlobals  *pSpotGlobals = NULL;
   VALUE           obj;
 
+  // TODO: if one exists, then ignore this.
+  // Make this a singleton
 	printf("new!\n");
   // wrap the C structure in Ruby
   obj = Data_Make_Struct(klass, sSpotGlobals, 0, spotRuby_free, pSpotGlobals);
@@ -105,6 +101,41 @@ VALUE spotRuby_alloc(VALUE klass) {
 }
 
 
+VALUE spotRuby_login(VALUE self, VALUE username, VALUE password)
+{
+  sSpotGlobals  *pSpotGlobals = NULL;
+
+  // get the handle
+  Data_Get_Struct(self, sSpotGlobals, pSpotGlobals);
+
+  printf("call spotRuby_login %s\n", (char*) RSTRING_PTR(username));
+  Check_Type(username, T_STRING);
+  Check_Type(password, T_STRING);
+  //INT2FIX(mpg123_load(DATA_PTR(self), (char*) RSTRING_PTR(url)));
+  if (pSpotGlobals == NULL)
+    return Qnil;
+
+  // if we are logged in, then logout.
+  // login
+  spotify_login((char*) RSTRING_PTR(username), (char*) RSTRING_PTR(password));
+
+  return INT2NUM(*pSpotGlobals->mode);    // what should success look like?
+}
+
+
+VALUE spotRuby_logout(VALUE self)
+{
+  sSpotGlobals  *pSpotGlobals = NULL;
+
+  // get the handle
+  Data_Get_Struct(self, sSpotGlobals, pSpotGlobals);
+  if (pSpotGlobals == NULL)
+    return Qnil;
+
+
+  return Qnil;
+}
+
 VALUE spotRuby_load(VALUE self, VALUE url)
 {
   sSpotGlobals  *pSpotGlobals = NULL;
@@ -118,11 +149,13 @@ VALUE spotRuby_load(VALUE self, VALUE url)
   if (pSpotGlobals == NULL)
     return Qnil;
 
-  // get access, put in new load command and release the new_cmd mutex/lock
   strcpy(newurl, (char*) RSTRING_PTR(url));
-  pthread_mutex_trylock(&new_cmd_ready);
+  spotify_select_playlist(newurl);
+  // get access, put in new load command and release the new_cmd mutex/lock
+  //strcpy(newurl, (char*) RSTRING_PTR(url));
+  //pthread_mutex_trylock(&new_cmd_ready);
   //new_cmd = 'L';
-  pthread_mutex_unlock(&new_cmd_ready);
+  //pthread_mutex_unlock(&new_cmd_ready);
 
   return INT2NUM(*pSpotGlobals->mode);    // what should success look like?
 }
@@ -130,6 +163,8 @@ VALUE spotRuby_load(VALUE self, VALUE url)
 VALUE spotRuby_pause(VALUE self)
 {
   sSpotGlobals  *pSpotGlobals = NULL;
+  int newMode = MODE_STOPPED;
+  int retValue;
 
   // get the handle
   Data_Get_Struct(self, sSpotGlobals, pSpotGlobals);
@@ -137,29 +172,13 @@ VALUE spotRuby_pause(VALUE self)
   if (pSpotGlobals == NULL)
     return Qnil;
 
-  printf("mpg123_pause before %d\n", *pSpotGlobals->mode);
-  //printf("pSpotGlobals = 0x%08x\n", (unsigned int) pSpotGlobals);
-
-  // if not playing, start
-  /*
-  if(*pSpotGlobals->mode != MODE_STOPPED)
-  { 
-    if (*pSpotGlobals->mode == MODE_PLAYING) {
-      *pSpotGlobals->mode = MODE_PAUSED;
-      if(param.usebuffer) buffer_stop();
-      //generic_sendmsg("P 1");
-    } else {
-      *pSpotGlobals->mode = MODE_PLAYING;
-      if(param.usebuffer) buffer_start();
-      // set simple command to run
-      pthread_mutex_trylock(&new_cmd_ready);
-      new_cmd = (char) NULL;   // just wake up
-      pthread_mutex_unlock(&new_cmd_ready);
-
-      //generic_sendmsg("P 2");
-    }
-  }
-  */
+  printf("Spot_pause before %d\n", *pSpotGlobals->mode);
+  if (*pSpotGlobals->mode == MODE_PAUSED)
+    newMode = MODE_PLAYING;
+  else if (*pSpotGlobals->mode == MODE_PLAYING)
+    newMode = MODE_PAUSED;
+  retValue = spotify_play_pause(newMode);
+  printf("spot pause returned %d\n", retValue);
 
   return INT2NUM(*pSpotGlobals->mode);
 }
@@ -170,11 +189,14 @@ double GetOutputVolume(sSpotGlobals *pSpotGlobals)
   // get current volume
   if (pSpotGlobals->muted)
     v = pSpotGlobals->saved_volume;
-  //else
+  else
+    v = audio_get_volume();
     //mpg123_getvolume(pSpotGlobals->mh, &v, NULL, NULL); /* Necessary? */
   return v;  
 }
 
+// set/get volume.
+// volume in/out of this is 0-100;  internally 0-1.0
 VALUE spotRuby_volume(int argc, VALUE *argv, VALUE self)
 {
   double  v = 0.0;
@@ -193,7 +215,8 @@ VALUE spotRuby_volume(int argc, VALUE *argv, VALUE self)
     v = NUM2DBL(newvol);
     if (pSpotGlobals->muted)
       pSpotGlobals->saved_volume = v/100.0;
-    //else
+    else
+      audio_set_volume(v/100.0);
       //mpg123_volume(pSpotGlobals->mh, v/100);
   }
   return DBL2NUM(GetOutputVolume(pSpotGlobals)*100);
@@ -220,16 +243,17 @@ VALUE spotRuby_frame(int argc, VALUE *argv, VALUE self)
     offset = NUM2INT(frame_num);
   }
 
-  if(playerMode == MODE_STOPPED)
+  if(*pSpotGlobals->mode == MODE_STOPPED)
   {
     return Qnil;
   }
-  oldpos = framenum;
+  oldpos = frame_num;
 
 
-  return INT2NUM(framenum);
+  return INT2NUM(frame_num);
 }
 
+// toggle mute
 VALUE spotRuby_mute(VALUE self)
 {
   sSpotGlobals  *pSpotGlobals = NULL;
@@ -240,18 +264,33 @@ VALUE spotRuby_mute(VALUE self)
 
   if (pSpotGlobals == NULL) return Qnil;
 
+  // if muted, unmute, restore volume
+  if (pSpotGlobals->muted) {
+    pSpotGlobals->muted = 0;
+    audio_set_volume (pSpotGlobals->saved_volume);
+  }
+  // else mute, save volume
+  else {
+    pSpotGlobals->saved_volume = audio_get_volume();
+    pSpotGlobals->muted = 1;
+    audio_set_volume(0.0f);
+  }
+
   return INT2NUM(pSpotGlobals->muted);
 }
 
-VALUE spotRuby_shuffle(VALUE self)
+VALUE spotRuby_shuffle(VALUE self, VALUE shuffle)
 {
   sSpotGlobals  *pSpotGlobals = NULL;
 
   // get the handle
   Data_Get_Struct(self, sSpotGlobals, pSpotGlobals);
+  Check_Type(shuffle, T_FIXNUM);
 
   if (pSpotGlobals == NULL)
     return Qnil;
+
+  g_shuffle_playlist = NUM2INT(shuffle);
 
   return INT2NUM(*pSpotGlobals->mode);
 }
@@ -265,6 +304,8 @@ VALUE spotRuby_shuffle(VALUE self)
 
   if (pSpotGlobals == NULL)
     return Qnil;
+
+  g_loop_song ^= 1;   // toggle
 
   return INT2NUM(*pSpotGlobals->mode);
 }
@@ -332,8 +373,8 @@ VALUE spotRuby_info(VALUE self)
   VALUE           songHash;
   off_t           pos;
   off_t           len;
-  mpg123_id3v1 *v1;
-  mpg123_id3v2 *v2;
+  //mpg123_id3v1 *v1;
+  //mpg123_id3v2 *v2;
   off_t           current_frame, frames_left;
   double          current_seconds, seconds_left;
 
@@ -348,7 +389,7 @@ VALUE spotRuby_info(VALUE self)
   // player state
   rb_hash_aset(rbHash, rb_str_new2("mode"),         INT2NUM(*pSpotGlobals->mode));
   rb_hash_aset(rbHash, rb_str_new2("source-type"),  INT2NUM(0));
-  rb_hash_aset(rbHash, rb_str_new2("source"),       rb_str_new2(newurl));
+  //rb_hash_aset(rbHash, rb_str_new2("source"),       rb_str_new2(newurl));
 #if 0
   pos = mpg123_tell(pSpotGlobals->mh);
   len = mpg123_length(pSpotGlobals->mh);
@@ -358,8 +399,8 @@ VALUE spotRuby_info(VALUE self)
   rb_hash_aset(rbHash, rb_str_new2("volume"),       DBL2NUM(GetOutputVolume(pSpotGlobals)));
   rb_hash_aset(rbHash, rb_str_new2("mute"),         INT2NUM(pSpotGlobals->muted));
   
-  rb_hash_aset(rbHash, rb_str_new2("shuffle"),  INT2NUM(0));
-  rb_hash_aset(rbHash, rb_str_new2("loopsong"), INT2NUM(0));
+  rb_hash_aset(rbHash, rb_str_new2("shuffle"),  INT2NUM(g_shuffle_playlist));
+  rb_hash_aset(rbHash, rb_str_new2("loopsong"), INT2NUM(g_loop_song));
   rb_hash_aset(rbHash, rb_str_new2("looplist"), INT2NUM(0));
 
   // position info
@@ -428,6 +469,8 @@ void Init_spotify_ruby(void) {
   rubyClassSpotify = rb_define_class("Spotify_ruby", rb_cObject);
 
   rb_define_alloc_func(rubyClassSpotify, spotRuby_alloc);
+  rb_define_method(rubyClassSpotify, "login",   spotRuby_login, 2);
+  rb_define_method(rubyClassSpotify, "logout",  spotRuby_logout, 0);
   rb_define_method(rubyClassSpotify, "load",   spotRuby_load, 1);
   rb_define_method(rubyClassSpotify, "pause",  spotRuby_pause, 0);
   //rb_define_method(rubyClassSpotify, "stop",   spotRuby_stop, 0);

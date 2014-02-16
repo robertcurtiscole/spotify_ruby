@@ -21,6 +21,8 @@ Or install it yourself as:
 ## Usage
 
 TODO: Write usage instructions here
+require 'spotify-ruby'
+mp = Spotify_ruby.new
 
 ## Contributing
 

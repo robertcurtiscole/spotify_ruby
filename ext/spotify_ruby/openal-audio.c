@@ -25,6 +25,8 @@
  * This file is part of the libspotify examples suite.
  */
 
+#ifdef OPEN_AL_BUILD
+
 #include <OpenAL/al.h>
 #include <OpenAL/alc.h>
 #include <errno.h>
@@ -166,5 +168,4 @@ float audio_get_volume(void)
 
 
 
-
-
+#endif

@@ -18,8 +18,6 @@ Gem::Specification.new do |spec|
   #spec.platform
 
   # should the spec.files only have the ruby file?  don't copy the others
-  #spec.files         = ['lib/spotify-ruby.rb'] + Dir.glob("ext/**/*.{c,rb}") + Dir.glob("ext/**/maci686inc/*.h")
-  #spec.files         = ['lib/spotify-ruby.rb', 'lib/spotify_ruby/version.rb'] + Dir.glob("ext/*/*.c") + Dir.glob("ext/spotify_ruby/include/*.h")
   spec.files         = ['lib/spotify-ruby.rb', 'lib/spotify_ruby/version.rb'] + Dir.glob("ext/*/*.c") + Dir.glob("ext/spotify_ruby/include/*.h")
   spec.executables   = spec.files.grep(%r{^bin/}) { |f| File.basename(f) }
   spec.test_files    = spec.files.grep(%r{^(test|spec|features)/})

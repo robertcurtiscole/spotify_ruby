@@ -371,6 +371,7 @@ VALUE spotRuby_info(VALUE self)
   sSpotGlobals  *pSpotGlobals = NULL;
   VALUE           rbHash;
   VALUE           songHash;
+  VALUE           positionHash;
   off_t           pos;
   off_t           len;
   //mpg123_id3v1 *v1;
@@ -396,7 +397,7 @@ VALUE spotRuby_info(VALUE self)
   rb_hash_aset(rbHash, rb_str_new2("frame"),        INT2NUM(pos));
   rb_hash_aset(rbHash, rb_str_new2("num-frames"),   INT2NUM(len));
 #endif
-  rb_hash_aset(rbHash, rb_str_new2("volume"),       DBL2NUM(GetOutputVolume(pSpotGlobals)));
+  rb_hash_aset(rbHash, rb_str_new2("volume"),       DBL2NUM(GetOutputVolume(pSpotGlobals))*100.0);
   rb_hash_aset(rbHash, rb_str_new2("mute"),         INT2NUM(pSpotGlobals->muted));
   
   rb_hash_aset(rbHash, rb_str_new2("shuffle"),  INT2NUM(g_shuffle_playlist));
@@ -405,19 +406,19 @@ VALUE spotRuby_info(VALUE self)
 
   // position info
 
+  positionHash = rb_hash_new();
   /*
   if(!mpg123_position(pSpotGlobals->mh, 0, xfermem_get_usedspace(buffermem), &current_frame, &frames_left, &current_seconds, &seconds_left)) 
   {
-    VALUE positionHash = rb_hash_new();
     //generic_sendmsg("F %"OFF_P" %"OFF_P" %3.2f %3.2f", (off_p)current_frame, (off_p)frames_left, current_seconds, seconds_left);
     rb_hash_aset(positionHash, rb_str_new2("seconds"),      DBL2NUM(current_seconds));
     rb_hash_aset(positionHash, rb_str_new2("num-seconds"),  DBL2NUM(current_seconds+seconds_left));
     rb_hash_aset(positionHash, rb_str_new2("frame"),        INT2NUM(current_frame));
     rb_hash_aset(positionHash, rb_str_new2("num-frames"),   INT2NUM(current_frame+frames_left));
-    rb_hash_aset(rbHash, rb_str_new2("position"), positionHash);
   }
   */
- 
+  rb_hash_aset(rbHash, rb_str_new2("position"), positionHash);
+
   // song info
   songHash = rb_hash_new();
   /*

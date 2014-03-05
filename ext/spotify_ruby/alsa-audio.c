@@ -24,6 +24,7 @@
  *
  * This file is part of the libspotify examples suite.
  */
+#ifdef ALSA_BUILD
 
 #include <alsa/asoundlib.h>
 #include <errno.h>
@@ -240,3 +241,4 @@ float audio_get_volume(void)
 }
 
 
+#endif // if ALSA_BUILD
